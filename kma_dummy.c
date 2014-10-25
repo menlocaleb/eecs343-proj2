@@ -73,6 +73,7 @@ void* kma_malloc(kma_size_t size)
   // get one page
   page = get_page();
   
+  printf("%d\n", page->size);
   // add a pointer to the page structure at the beginning of the page
   *((kma_page_t**)page->ptr) = page;
   
