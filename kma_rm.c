@@ -238,12 +238,17 @@ pagehead->ptr
 			first_chunk = (void*)(((freeblock_t*)first_chunk)->next);
 		}
 
+		// if((long)to_add+to_add->size >= (long)first_chunk){
+		// 	void* prev = ((freeblock_t*) first_chunk)->pre;
+		// 	((freeblock_t*)prev)->next = (void*)to_add;
+		// 	to_add->size = to_add->size + ((freeblock_t*)first_chunk)->size-(((long)(to_add+to_add->size))-(long)first_chunk); 
+		// }
 		/*
 		...->|_first____|->...
 			^ to_add			
 		*/
 
-		// first_chunk = first_chunk->pre;
+		// first_chunk = (void*)(((freeblock_t*)first_chunk)->pre);
 		int this_size = ((freeblock_t*)first_chunk)->size;
 		void *tail = (void*) ((long)first_chunk+this_size);
 
