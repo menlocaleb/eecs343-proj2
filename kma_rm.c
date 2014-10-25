@@ -63,7 +63,7 @@ struct{
 } pageheader_t;
 /************Global Variables*********************************************/
 kma_page_t* pagehead = NULL;
-int pages_num = 0;
+//int pages_num = 0;
 // page* pagelist;
 /************Function Prototypes******************************************/
 void initialize_head(kma_page_t* page);
@@ -156,7 +156,6 @@ void initialize_page(kma_page_t* page){
 
 	add_to_list((void*)newpghead->listhead, page->size - sizeof(pageheader_t));
 	newpghead -> num_used =0;
-	newpghead -> page_count++;
 }
 
 void add_to_list(void * ptr, int size){
@@ -202,7 +201,7 @@ pagehead->ptr
 				//>=
 		if((tail == first_chunk)
 			&& 
-			(((*freeblock_t) tail)->mypage == ((freeblock_t*) first_chunk)->mypage)){
+			(((*freeblock_t) tail)->my_page == ((freeblock_t*) first_chunk)->my_page)){
 
 			/*merge*/
 			
@@ -262,7 +261,7 @@ pagehead->ptr
 		void *tail = (void*) ((long)first_chunk+this_size);
 
 		//use add
-		if(( tail == ptr) && (((freeblock_t*)nextb)->mypage == ((freeblock_t*)ptr)->mypage)){
+		if(( tail == ptr) && (((freeblock_t*)nextb)->my_page == ((freeblock_t*)ptr)->my_page)){
 			((freeblock_t*)first_chunk)->size = this_size+ to_add->size; 
 		}
 
@@ -300,13 +299,60 @@ void* fff(int size){
 		else {
 			add_to_list((void*)(long)iteration+size,iteration->size-size);
 			remove_node(iteration);
-			return (void*)iteraion;		}
+			return (void*)iteration;		
+		}
 
 	}
 	
 	//didn't find one
 	initialize_page(get_page());
+	firstpage->pages_num++;
 
 	return fff(size);
+}
+
+void remove_node(void* ptr){
+
+}
+
+//free what's not used
+void freethepage(){
+	pageheader_t* firstpage = (pageheader_t*) (pagehead->ptr);
+	pageheader_t* iteration_page;
+
+//start from the last page
+	int i = firstpage->page_count;
+
+	bool flag = false;
+	do{
+
+//locate the ith page
+		iteration_page = ((pageheader_t*)((long)firstpage + i* PAGEZISE));
+		freeblock_t* interation_block = firstpage->listhead;
+		
+		//if this page is not used
+		if(!(pageheader_t*)iteration_page->num_used){
+			//delete all the nodes in the list
+			while(interation_block){
+				freeblock_t* next_block = interation_block -> next;
+				if(interation_block->my_page == iteration_page) 
+					remove_node(interation_block);
+				interation_block = next_block;		
+			}
+			flag = true;//continue
+			//till the first page
+			if(iteration_page == firstpage){
+				pagehead = NULL;
+				break;
+			}
+			free_page(iteration_page->me);
+			i--;
+			if(pagehead) firstpage->pages_num--;
+		}
+		if(iteration_page == firstpage){
+				break;
+		}
+
+	}while(flag)
 
 }
