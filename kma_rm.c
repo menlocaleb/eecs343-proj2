@@ -80,32 +80,25 @@ void freethepage();
 void*
 kma_malloc(kma_size_t size)
 {
+//ignore overrequested size
+	if(size+sizeof(void*)>PAGEZISE) return NULL;
 
-	if (size +	sizeof(void*)> PAGESIZE)
-	{
-		return NULL;
-	}
-	if(!pagehead){
-		initialize_head(get_page());
-	}
-  
-  // add a pointer to the page structure at the beginning of the page
-  *((kma_page_t**)page->ptr) = page;
+	
+	if(!pagehead) initialize_head(get_page());
+	void * final = fff(size);
+	pageheader_t* thepage = (freeblock_t*) final -> my_page;
+	thepage->num_used++;
+	return final;
 
-  void* where = fff(size);
-  header* 
-
-  return NULL;
 }
 
 void
 kma_free(void* ptr, kma_size_t size)
 {
-  kma_page_t* page;
-  
-  page = *((kma_page_t**)(ptr - sizeof(kma_page_t*)));
-  
-  free_page(page);
+
+	add_to_list(ptr,size);
+	((pageheader_t*)(((freeblock_t*)ptr)->my_page)) -> num_used--;
+	freethepage();
 }
 
 #endif // KMA_RM
@@ -311,6 +304,35 @@ void* fff(int size){
 }
 
 void remove_node(void* ptr){
+	freeblock_t* current_block = (freeblock_t*)ptr;
+	freeblock_t* next = current_block -> next;
+	freeblock_t* pre = current_block -> pre;
+
+//only header
+	if(!next && !pre){
+		pageheader_t* firstpage = (pageheader_t*) pagehead->ptr;
+
+		firstpage->header = NULL;
+		pagehead->NULL;
+
+		return;
+	}
+//header
+	if(!pre){
+		pageheader_t* firstpage = (pageheader_t*) pagehead->ptr;
+		next->pre = NULL;
+		firstpage -> listhead = next;
+		return;
+	}
+//tail
+	if(!next){
+		pre->next = NULL;
+		return;
+	}
+//regular
+	next ->pre = pre;
+	pre -> next = next;
+	return;  
 
 }
 
@@ -324,7 +346,7 @@ void freethepage(){
 
 	bool flag = false;
 	do{
-
+			flag = false;
 //locate the ith page
 		iteration_page = ((pageheader_t*)((long)firstpage + i* PAGEZISE));
 		freeblock_t* interation_block = firstpage->listhead;
