@@ -56,7 +56,7 @@ struct {
 } freeblock_t;
 
 struct{
-	// void* self;
+	void* me;
 	int num_used;
 	int page_count;
 	freeblock_t * listhead;
@@ -156,7 +156,6 @@ void initialize_page(kma_page_t* page){
 
 	add_to_list((void*)newpghead->listhead, page->size - sizeof(pageheader_t));
 	newpghead -> num_used =0;
-	newpghead -> page_count++;
 }
 
 void add_to_list(void * ptr, int size){
@@ -286,20 +285,20 @@ void* fff(int size){
 		size = sizeof(freeblock_t);
 
 	pageheader_t* firstpage = (pageheader_t*)(pagehead->ptr);
-	freeblock_t* iteration = (freeblock_t*) firstpage->listhead;
+	freeblock_t* interation_block = (freeblock_t*) firstpage->listhead;
 
-	while(iteration){
-		if(iteration ->size < size){
-			iteration = iteration->next;
+	while(interation_block){
+		if(interation_block ->size < size){
+			interation_block = interation_block->next;
 			continue;
 		}
-		if(iteration->size == size||(iteration->size-size)< sizeof(freeblock_t)){
-			remove_node(iteration);
-			return (void*)iteration;
+		if(interation_block->size == size||(interation_block->size-size)< sizeof(freeblock_t)){
+			remove_node(interation_block);
+			return (void*)interation_block;
 		}
 		else {
-			add_to_list((void*)(long)iteration+size,iteration->size-size);
-			remove_node(iteration);
+			add_to_list((void*)(long)interation_block+size,interation_block->size-size);
+			remove_node(interation_block);
 			return (void*)iteraion;		
 		}
 
@@ -308,7 +307,6 @@ void* fff(int size){
 	//didn't find one
 	initialize_page(get_page());
 	firstpage->pages_num++;
-
 	return fff(size);
 }
 
@@ -344,7 +342,7 @@ void freethepage(){
 			//till the first page
 			if(iteration_page == firstpage){
 				pagehead = NULL;
-				break;
+				flag = true;
 			}
 			free_page(iteration_page->me);
 			i--;
@@ -355,7 +353,5 @@ void freethepage(){
 		}
 
 	}while(flag)
-
-	return fff(size);
 
 }
