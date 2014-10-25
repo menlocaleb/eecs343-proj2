@@ -156,6 +156,7 @@ void initialize_page(kma_page_t* page){
 
 	add_to_list((void*)newpghead->listhead, page->size - sizeof(pageheader_t));
 	newpghead -> num_used =0;
+	newpghead -> page_count++;
 }
 
 void add_to_list(void * ptr, int size){
@@ -299,7 +300,7 @@ void* fff(int size){
 		else {
 			add_to_list((void*)(long)iteration+size,iteration->size-size);
 			remove_node(iteration);
-			return (void*)iteration;		
+			return (void*)iteraion;		
 		}
 
 	}
@@ -354,5 +355,7 @@ void freethepage(){
 		}
 
 	}while(flag)
+
+	return fff(size);
 
 }
