@@ -48,14 +48,14 @@
  *  variables should be in all lower case. When initializing
  *  structures and arrays, line everything up in neat columns.
  */
-struct {
+typedef struct {
 	void* next;
 	int size;
 	void* pre;
 	void * my_page;
 } freeblock_t;
 
-struct{
+typedef struct{
 	void* me;
 	int num_used;
 	int page_count;
@@ -81,12 +81,12 @@ void*
 kma_malloc(kma_size_t size)
 {
 //ignore overrequested size
-	if(size+sizeof(void*)>PAGEZISE) return NULL;
+	if(size+sizeof(void*)>PAGESIZE) return NULL;
 
 	
 	if(!pagehead) initialize_head(get_page());
 	void * final = fff(size);
-	pageheader_t* thepage = (freeblock_t*) final -> my_page;
+	pageheader_t* thepage = ((freeblock_t*)final)->my_page;
 	thepage->num_used++;
 	return final;
 
@@ -97,11 +97,11 @@ kma_free(void* ptr, kma_size_t size)
 {
 
 	add_to_list(ptr,size);
-	((pageheader_t*)(((freeblock_t*)ptr)->my_page)) -> num_used--;
+	((pageheader_t*)(((freeblock_t*)ptr)->my_page))->num_used--;
 	freethepage();
 }
 
-#endif // KMA_RM
+
 
 
 /*******************************/
@@ -122,11 +122,11 @@ void initialize_head(kma_page_t* page){
 
 	newpghead = (pageheader_t*) (page->ptr);
 
-	newpghead -> listhead = (freeblock_t*) ((long)newpghead + sizeof(pageheader_t));
+	newpghead->listhead = (freeblock_t*) ((long)newpghead + sizeof(pageheader_t));
 
 	add_to_list((void*)newpghead->listhead, page->size - sizeof(pageheader_t));
-	newpghead -> num_used =0;
-	newpghead -> page_count = 0;
+	newpghead->num_used =0;
+	newpghead->page_count = 0;
 }
 
 void initialize_page(kma_page_t* page){
@@ -145,10 +145,10 @@ void initialize_page(kma_page_t* page){
 
 	newpghead = (pageheader_t*) (page->ptr);
 
-	newpghead -> listhead = (freeblock_t*) ((long)newpghead + sizeof(pageheader_t));
+	newpghead->listhead = (freeblock_t*)((long)newpghead + sizeof(pageheader_t));
 
 	add_to_list((void*)newpghead->listhead, page->size - sizeof(pageheader_t));
-	newpghead -> num_used =0;
+	newpghead->num_used =0;
 }
 
 void add_to_list(void * ptr, int size){
@@ -159,15 +159,15 @@ __|firstchunk_____|______________|________
 pagehead->ptr
 
 */
-	pageheader_t* firstpage = (pageheader_t*)(pagehead -> ptr);
+	pageheader_t* firstpage = (pageheader_t*)(pagehead->ptr);
 	//first chunk of the page
-	void *first_chunk = (void*)(firstpage -> listhead);
+	void *first_chunk = (void*)(firstpage->listhead);
 	
 	//#OF PAGES BEFORE
-	long position = ((long)ptr - (long)firstpage)/PAGEZISE;
+	long position = ((long)ptr - (long)firstpage)/PAGESIZE;
 
 	pageheader_t*  to_add_page  = (pageheader_t*)((long) firstpage + position * PAGESIZE) ;
-	freeblock_t* to_add = (freeblock_t*) ptr;
+	freeblock_t* to_add = (freeblock_t*)ptr;
 	//change it to !voic
 	to_add-> my_page = to_add_page; 
 
@@ -194,7 +194,7 @@ pagehead->ptr
 				//>=
 		if((tail == first_chunk)
 			&& 
-			(((*freeblock_t) tail)->my_page == ((freeblock_t*) first_chunk)->my_page)){
+			(((freeblock_t*)tail)->my_page == ((freeblock_t*)first_chunk)->my_page)){
 
 			/*merge*/
 			
@@ -203,21 +203,21 @@ pagehead->ptr
 			if(!((freeblock_t*)(firstpage->listhead)->next)){
 				/*?merge the size*/
 				int firstsize = ((freeblock_t*)(firstpage->listhead))->size;
-				((freeblock_t*) ptr)->size +=  firstsize;
+				((freeblock_t*)ptr)->size +=  firstsize;
 				/*set the next pointer and the listhead */
-				((freeblock_t*) ptr)->next = NULL;
-				firstpage->listhead = (freeblock_t*) ptr;
+				((freeblock_t*)ptr)->next = NULL;
+				firstpage->listhead = (freeblock_t*)ptr;
 			}
 			/*|---|___|->|___|...
 			   to_  first  next
 			*/
 			else{
-				freeblock_t * the_next = firstpage->header->next;
+				freeblock_t * the_next = firstpage->listhead->next;
 				the_next->pre = to_add;
 				//switch the pointers
 				to_add->next = the_next;
-				to_add->size = ((freeblock_t*)ptr) ->size + firstpage->listhead->size;  
-				firstpage -> listhead = to_add;
+				to_add->size = ((freeblock_t*)ptr)->size + firstpage->listhead->size;  
+				firstpage->listhead = to_add;
 			}
 		}
 
@@ -225,9 +225,9 @@ pagehead->ptr
 		|-----|->|_____|...
 		*/
 		else{
-			((freeblock_t*)firstpage->heaer)->pre = to_add;
-			to_add->next = ((freeblock_t*)firstpage->heaer);
-			firstpage->heaer = to_add;
+			((freeblock_t*)firstpage->listhead)->pre = to_add;
+			to_add->next = ((freeblock_t*)firstpage->listhead);
+			firstpage->listhead= to_add;
 		}
 			
 	}
@@ -240,7 +240,7 @@ pagehead->ptr
 	else {
 
 		//??
-		while ((freeblock_t*)first_chunk) -> next && first_chunk> ptr){
+		while (((freeblock_t*)first_chunk)->next && first_chunk> ptr){
 			first_chunk = (void*)(((freeblock_t*)first_chunk)->next);
 		}
 
@@ -254,7 +254,7 @@ pagehead->ptr
 		void *tail = (void*) ((long)first_chunk+this_size);
 
 		//use add
-		if(( tail == ptr) && (((freeblock_t*)nextb)->my_page == ((freeblock_t*)ptr)->my_page)){
+		if(( tail == ptr) && (((freeblock_t*)tail)->my_page == ((freeblock_t*)ptr)->my_page)){
 			((freeblock_t*)first_chunk)->size = this_size+ to_add->size; 
 		}
 
@@ -278,7 +278,7 @@ void* fff(int size){
 		size = sizeof(freeblock_t);
 
 	pageheader_t* firstpage = (pageheader_t*)(pagehead->ptr);
-	freeblock_t* interation_block = (freeblock_t*) firstpage->listhead;
+	freeblock_t* interation_block = ((freeblock_t*)firstpage->listhead);
 
 	while(interation_block){
 		if(interation_block ->size < size){
@@ -292,36 +292,35 @@ void* fff(int size){
 		else {
 			add_to_list((void*)(long)interation_block+size,interation_block->size-size);
 			remove_node(interation_block);
-			return (void*)iteraion;		
+			return (void*)interation_block;		
 		}
 
 	}
 	
 	//didn't find one
 	initialize_page(get_page());
-	firstpage->pages_num++;
+	firstpage->page_count++;
 	return fff(size);
 }
 
 void remove_node(void* ptr){
 	freeblock_t* current_block = (freeblock_t*)ptr;
-	freeblock_t* next = current_block -> next;
-	freeblock_t* pre = current_block -> pre;
+	freeblock_t* next = current_block->next;
+	freeblock_t* pre = current_block->pre;
 
 //only header
 	if(!next && !pre){
 		pageheader_t* firstpage = (pageheader_t*) pagehead->ptr;
 
-		firstpage->header = NULL;
-		pagehead->NULL;
-
+		firstpage->listhead = NULL;
+		pagehead = NULL;
 		return;
 	}
 //header
 	if(!pre){
 		pageheader_t* firstpage = (pageheader_t*) pagehead->ptr;
 		next->pre = NULL;
-		firstpage -> listhead = next;
+		firstpage->listhead = next;
 		return;
 	}
 //tail
@@ -331,7 +330,7 @@ void remove_node(void* ptr){
 	}
 //regular
 	next ->pre = pre;
-	pre -> next = next;
+	pre->next = next;
 	return;  
 
 }
@@ -344,36 +343,38 @@ void freethepage(){
 //start from the last page
 	int i = firstpage->page_count;
 
-	bool flag = false;
+	bool flag = FALSE;
 	do{
-			flag = false;
+			flag = FALSE;
 //locate the ith page
-		iteration_page = ((pageheader_t*)((long)firstpage + i* PAGEZISE));
+		iteration_page = ((pageheader_t*)((long)firstpage + i* PAGESIZE));
 		freeblock_t* interation_block = firstpage->listhead;
 		
 		//if this page is not used
 		if(!(pageheader_t*)iteration_page->num_used){
 			//delete all the nodes in the list
 			while(interation_block){
-				freeblock_t* next_block = interation_block -> next;
+				freeblock_t* next_block = interation_block->next;
 				if(interation_block->my_page == iteration_page) 
 					remove_node(interation_block);
 				interation_block = next_block;		
 			}
-			flag = true;//continue
+			flag = TRUE;//continue
 			//till the first page
 			if(iteration_page == firstpage){
 				pagehead = NULL;
-				flag = true;
+				flag = TRUE;
 			}
 			free_page(iteration_page->me);
 			i--;
-			if(pagehead) firstpage->pages_num--;
+			if(pagehead) firstpage->page_count--;
 		}
 		if(iteration_page == firstpage){
 				break;
 		}
 
-	}while(flag)
+	}while(flag);
 
 }
+
+#endif // KMA_RM
