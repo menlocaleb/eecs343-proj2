@@ -58,6 +58,7 @@ struct {
 struct{
 	// void* self;
 	int num_used;
+	int page_count;
 	freeblock_t * listhead;
 } pageheader_t;
 /************Global Variables*********************************************/
@@ -65,9 +66,12 @@ kma_page_t* pagehead = NULL;
 int pages_num = 0;
 // page* pagelist;
 /************Function Prototypes******************************************/
-void* initialize_head(kma_page_t* page);
+void initialize_head(kma_page_t* page);
 void add_to_list(void * ptr, int size);
 void* fff(int size);
+void remove_node(void* ptr);
+void initialize_page(kma_page_t* page);
+void freethepage();
 
 /************External Declaration*****************************************/
 
@@ -120,18 +124,40 @@ void initialize_head(kma_page_t* page){
 	*/
 	*((kma_page_t**) page->ptr) = page;
 	pagehead = page;
-	pageheader_t* pghead; // this page's header
+	pageheader_t* newpghead; // this page's header
 	
 
-	pghead = (pageheader_t*) (page->ptr);
+	newpghead = (pageheader_t*) (page->ptr);
 
-	pghead -> listhead = (freeblock_t*) ((long)pghead + sizeof(pageheader_t));
+	newpghead -> listhead = (freeblock_t*) ((long)newpghead + sizeof(pageheader_t));
 
-	add_to_list((void*)pghead->listhead, page->size - sizeof(pageheader_t));
-	pghead -> num_used =0;
-	pages_num++;
+	add_to_list((void*)newpghead->listhead, page->size - sizeof(pageheader_t));
+	newpghead -> num_used =0;
+	newpghead -> page_count = 0;
 }
 
+void initialize_page(kma_page_t* page){
+	/*
+	|freeblock_t* __
+	|num 				  |
+	pageheader_t    v________________
+	|id        	  |              	 | 
+	|ptr________  |                |
+	|size       | |________________|
+	kma_page_t<--
+	*/
+	*((kma_page_t**) page->ptr) = page;
+	pageheader_t* newpghead; // this page's header
+	
+
+	newpghead = (pageheader_t*) (page->ptr);
+
+	newpghead -> listhead = (freeblock_t*) ((long)newpghead + sizeof(pageheader_t));
+
+	add_to_list((void*)newpghead->listhead, page->size - sizeof(pageheader_t));
+	newpghead -> num_used =0;
+	newpghead -> page_count++;
+}
 
 void add_to_list(void * ptr, int size){
 /*
@@ -253,14 +279,34 @@ pagehead->ptr
 		}
 	}
 
-
 }
 
 void* fff(int size){
 	if(size < sizeof(freeblock_t))
 		size = sizeof(freeblock_t);
 
-	header * mainpage;
-	mainpage = (header*) (mainpage->first);
+	pageheader_t* firstpage = (pageheader_t*)(pagehead->ptr);
+	freeblock_t* iteration = (freeblock_t*) firstpage->listhead;
+
+	while(iteration){
+		if(iteration ->size < size){
+			iteration = iteration->next;
+			continue;
+		}
+		if(iteration->size == size||(iteration->size-size)< sizeof(freeblock_t)){
+			remove_node(iteration);
+			return (void*)iteration;
+		}
+		else {
+			add_to_list((void*)(long)iteration+size,iteration->size-size);
+			remove_node(iteration);
+			return (void*)iteraion;		}
+
+	}
+	
+	//didn't find one
+	initialize_page(get_page());
+
+	return fff(size);
 
 }
