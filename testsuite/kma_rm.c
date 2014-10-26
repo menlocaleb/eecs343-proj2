@@ -58,6 +58,7 @@ typedef struct {
 typedef struct{
 	void* me;
 	int num_used;
+
 	int page_count;
 	freeblock_t * listhead;
 } pageheader_t;
@@ -127,12 +128,14 @@ void initialize_head(kma_page_t* page){
 	add_to_list(((void*)(newpghead->listhead)), page->size - sizeof(pageheader_t));
 	newpghead->num_used =0;
 	newpghead->page_count = 0;
+	newpghead->me = (void*)page;
 }
 
 void initialize_page(kma_page_t* page){
 
 	*((kma_page_t**) page->ptr) = page;
 	pageheader_t* newpghead; // this page's header
+	
 	
 
 	newpghead = (pageheader_t*) (page->ptr);
@@ -142,6 +145,7 @@ void initialize_page(kma_page_t* page){
 	add_to_list((void*)newpghead->listhead, page->size - sizeof(pageheader_t));
 	newpghead->num_used =0;
 	newpghead->page_count = 0;
+	newpghead->me = (void*)page;
 }
 
 void add_to_list(void * ptr, int size){
