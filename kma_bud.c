@@ -41,6 +41,7 @@
 /************Private include**********************************************/
 #include "kma_page.h"
 #include "kma.h"
+#include "kma_bud.h"
 
 /************Defines and Typedefs*****************************************/
 /*  #defines and typedefs should have their names in all caps.
@@ -49,34 +50,21 @@
  *  structures and arrays, line everything up in neat columns.
  */
 
-#define NUM_BUFFER_SIZES 9 
-
-typedef unsigned char BYTE;
-
-typedef struct buddy_page_control_structure
-{
-  kma_page_t* pageData;
-  BYTE bitmap[64];
-} pageControlStruct;
-
-typedef struct buddy_first_page_control_structure
-{ 
-  kma_page_t* pageData;
-  BYTE bitmap[64];
-  void* freeBufferList[NUM_BUFFER_SIZES]; // 9 buffer sizes, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096
-} firstPageControlStruct;
 	
 
 /************Global Variables*********************************************/
-firstPageControlStruct* startOfManagedMemory = NULL;
+buddySystemStruct_t* startOfManagedMemory = NULL;
 
 /************Function Prototypes******************************************/
-void initPage(kma_page_t** startOfNewPage);
+void initPage(kma_page_t* startOfNewPage);
 int getAmountOfMemoryToRequest(int numOfBytesRequested);
 int getFreeBufferIndex(int bufferSize);
 void* getFreeBufferPointer(int index);
-void setBitmask(pageControlStruct* controlStructPtr, int sizeInBytes);
-void unsetBitmask(pageControlStruct* controlStructPtr, int sizeInBytes);
+size_t getPageNumber(void* addressOfStartOfPage); // linear search through page array
+size_t getByteIndex(void* addressOfStartOfPage, void* ptr); // index into bitmap array of bytes
+size_t getByteOffset(void* addressOfStartOfPage, void* ptr); // number of left shifts for setting/unsetting bit
+void setBitmask(void* ptr, int sizeInBytes);
+void unsetBitmask(void* ptr, int sizeInBytes);
 void* getMemoryPointer(int bufferSize);
 void coalesceFreeMemory(void* pointer, int bufferSize);
 void* splitUntil(int bufferSize);
@@ -91,6 +79,11 @@ kma_malloc(kma_size_t size)
   if (startOfManagedMemory == NULL)
   {
     // get new page and initialize control struct
+    kma_page_t* page;
+  
+    // get one page
+    page = get_page();
+    initPage(page);
 
   }
   
@@ -113,18 +106,33 @@ kma_free(void* ptr, kma_size_t size)
 }
 
 
-void initPage(kma_page_t** startOfNewPage)
+void initPage(kma_page_t* startOfNewPage)
 {
+    // cast pointer to pointer for buddySystemStruct_t
+    startOfManagedMemory = (buddySystemStruct_t*)startOfNewPage->ptr;
+
+    // store pointer to page data in pages array
+    startOfManagedMemory->pages[0].pageData = startOfNewPage;
 }
 
 int getAmountOfMemoryToRequest(int numOfBytesRequested)
 {
-  return 0;
+  size_t sizeWithLinkedListPtr = numOfBytesRequested + sizeof(void*);
+  if (sizeWithLinkedListPtr > PAGESIZE)
+  {
+    return -1; // request is too large
+  }
+  int bufferSize = 16; // smallest buffer size
+  while (bufferSize < sizeWithLinkedListPtr)
+  {
+    bufferSize <<= 1;
+  } 
+  return bufferSize;
 }
 
 int getFreeBufferIndex(int bufferSize)
 {
-  if (bufferSize % 2 != 0 || bufferSize > 4096)
+  if (bufferSize % 2 != 0 || bufferSize > PAGESIZE)
   {
     return -1;
   }
@@ -148,14 +156,14 @@ void* getFreeBufferPointer(int index)
     return NULL;
   }
 
-  return startOfManagedMemory->freeBufferList[index];
+  return startOfManagedMemory->freeList.freeBufferList[index];
 }
 
-void setBitmask(pageControlStruct* controlStructPtr, int sizeInBytes)
+void setBitmask(void* ptr, int sizeInBytes)
 {
 }
 
-void unsetBitmask(pageControlStruct* controlStructPtr, int sizeInBytes)
+void unsetBitmask(void* ptr, int sizeInBytes)
 {
 }
 
