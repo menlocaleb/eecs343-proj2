@@ -107,3 +107,5 @@ clean:
 	${RM} -f ${PROGS} kma_competition kma_output.dat kma_output.png kma_waste.png
 	${RM} -f *.o *~ *.gch ${TEAM}*.tar ${TEAM}*.tar.gz
 
+unit-test: ${SRCS} unit-test.c
+	${CC} ${CFLAGS} -DKMA_BUD -o $@ kma_page.c kma_bud.c unit-test.c

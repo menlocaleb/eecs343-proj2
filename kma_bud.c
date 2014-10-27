@@ -49,9 +49,37 @@
  *  structures and arrays, line everything up in neat columns.
  */
 
+#define NUM_BUFFER_SIZES 9 
+
+typedef unsigned char BYTE;
+
+typedef struct buddy_page_control_structure
+{
+  kma_page_t* pageData;
+  BYTE bitmap[64];
+} pageControlStruct;
+
+typedef struct buddy_first_page_control_structure
+{ 
+  kma_page_t* pageData;
+  BYTE bitmap[64];
+  void* freeBufferList[NUM_BUFFER_SIZES]; // 9 buffer sizes, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096
+} firstPageControlStruct;
+	
+
 /************Global Variables*********************************************/
+firstPageControlStruct* startOfManagedMemory = NULL;
 
 /************Function Prototypes******************************************/
+void initPage(kma_page_t** startOfNewPage);
+int getAmountOfMemoryToRequest(int numOfBytesRequested);
+int getFreeBufferIndex(int bufferSize);
+void* getFreeBufferPointer(int index);
+void setBitmask(pageControlStruct* controlStructPtr, int sizeInBytes);
+void unsetBitmask(pageControlStruct* controlStructPtr, int sizeInBytes);
+void* getMemoryPointer(int bufferSize);
+void coalesceFreeMemory(void* pointer, int bufferSize);
+void* splitUntil(int bufferSize);
 	
 /************External Declaration*****************************************/
 
@@ -60,13 +88,89 @@
 void*
 kma_malloc(kma_size_t size)
 {
+  if (startOfManagedMemory == NULL)
+  {
+    // get new page and initialize control struct
+
+  }
+  
+  // calculate size, plus size of void ptr then rounded up
+
+  // return null if bigger than a page
+
+  // request memory of rounded up size and return
   return NULL;
 }
 
 void 
 kma_free(void* ptr, kma_size_t size)
 {
+  // unset bitmap
+  // coalesce free buddies
+  // insert into free list
+  // if only control struct left, release page (if not first page?)
   ;
+}
+
+
+void initPage(kma_page_t** startOfNewPage)
+{
+}
+
+int getAmountOfMemoryToRequest(int numOfBytesRequested)
+{
+  return 0;
+}
+
+int getFreeBufferIndex(int bufferSize)
+{
+  if (bufferSize % 2 != 0 || bufferSize > 4096)
+  {
+    return -1;
+  }
+  size_t referenceValue = 16;
+  int index = 0;
+  while (bufferSize != referenceValue)
+  {
+    referenceValue = referenceValue * 2;
+    index = index + 1;
+  }
+  return index;
+}
+
+void* getFreeBufferPointer(int index)
+{
+  assert(index >= 0);
+  assert(index < NUM_BUFFER_SIZES);
+
+  if (startOfManagedMemory == NULL)
+  {
+    return NULL;
+  }
+
+  return startOfManagedMemory->freeBufferList[index];
+}
+
+void setBitmask(pageControlStruct* controlStructPtr, int sizeInBytes)
+{
+}
+
+void unsetBitmask(pageControlStruct* controlStructPtr, int sizeInBytes)
+{
+}
+
+void* getMemoryPointer(int bufferSize)
+{
+  return NULL;
+}
+
+void coalesceFreeMemory(void* pointer, int bufferSize)
+{
+}
+
+void* splitUntil(int bufferSize)
+{
+  return NULL;
 }
 
 #endif // KMA_BUD
