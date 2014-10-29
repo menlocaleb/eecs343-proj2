@@ -237,7 +237,7 @@ addKpageToFreelist(kma_page_t* page, freelist* list)
   kpl->page = page;
   
   // add kpl to list->pagelist
-  kpl->next = list->pagelist;
+  // kpl->next = list->pagelist;
   list->pagelist = kpl;
 }
 
@@ -252,38 +252,29 @@ getBufferFromFreelist(freelist* list)
     {
       kma_page_t* page = get_page();
 
-  // split page into buffers of (list->size) size
-  // Again, don't know what i'm doing
-  int buffer_count = PAGESIZE / list->size;
-  int i;
-  void* page_start = page->ptr;
-  for(i = 0; i < buffer_count; i++){
-    buffer_t* buf = (buffer_t*)(page_start + i*list->size);
-    buf->head = list->start;
-    list->start = buf;
-  }
-  addKpageToFreelist(page, list);
+      // split page into buffers of (list->size) size
+      // Again, don't know what i'm doing
+      int buffer_count = PAGESIZE / list->size;
+      int i;
+      void* page_start = page->ptr;
+      for(i = 0; i < buffer_count; i++){
+        buffer_t* buf = (buffer_t*)(page_start + i*list->size);
+        buf->head = list->start;
+        list->start = buf;
+      }
+      addKpageToFreelist(page, list);
     }
-  // get buffer from list->start
-  buffer_t* buf = list->start;
-  list->start = (buffer_t*)buf->head;
-  buf->head = (void*)list;
-  list->used++;
-  main_list*mainl = start->ptr;
-  if(list!=&mainl->kpages)mainl->used++;
-  // return pointer to rest of buffer
-  return (void*)buf+sizeof(buffer_t);
+  // // get buffer from list->start
+  // buffer_t* buf = list->start;
+  // list->start = (buffer_t*)buf->head;
+  // buf->head = (void*)list;
+  // list->used++;
+  // main_list*mainl = start->ptr;
+  // if(list!=&mainl->kpages)mainl->used++;
+  // // return pointer to rest of buffer
+  // return (void*)buf+sizeof(buffer_t);
 }
 
-
-void
-addBuffersTo(freelist* list)
-{
-  /*
-    add more buffers to a freelist
-  */
-  
-}
 
 
 /***********************************************************************************
@@ -294,38 +285,39 @@ addBuffersTo(freelist* list)
 void
 kma_free(void* ptr, kma_size_t size)
 {
-  /*
-    return a buffer to the freelist it belongs to
-    free all pages of that freelist if none of the buffers for it are used
-  */
-  buffer_t*buf = (buffer_t*)((void*)ptr-sizeof(buffer_t));
-  freelist* list = (freelist*)buf->head;
-  buf->head = list->start;
-  list->start = buf;
-  list->used--;
+  // /*
+  //   return a buffer to the freelist it belongs to
+  //   free all pages of that freelist if none of the buffers for it are used
+  // */
+  // buffer_t*buf = (buffer_t*)((void*)ptr-sizeof(buffer_t));
+  // freelist* list = (freelist*)buf->head;
+  // buf->head = list->start;
+  // list->start = buf;
+  // list->used--;
 
-  if (list->used==0) {
-    list->start=NULL;
+  // if (list->used==0) {
+  //   list->start=NULL;
 
-    kpage_l*kpage = list->pagelist;
-    while (kpage != NULL) {
-      free_page(kpage->page);
-      kpage = kpage->next;
-    }
-    list->pagelist = NULL;
-  }
+  //   kpage_l*kpage = list->pagelist;
+  //   while (kpage != NULL) {
+  //     free_page(kpage->page);
+  //     kpage = kpage->next;
+  //   }
+  //   list->pagelist = NULL;
+  // }
 
-  main_list* mainl = (main_list*)start->ptr;
-  mainl->used--;
-  if (mainl->used == 0) {
-    kpage_l*kpage = mainl->kpages.pagelist;
-    while (kpage->next!=NULL) {
-      free_page(kpage->page);
-      kpage = kpage->next;
-    }
-    free_page(kpage->page);
-    start = NULL;
-  }
+  // main_list* mainl = (main_list*)start->ptr;
+  // mainl->used--;
+  // if (mainl->used == 0) {
+  //   kpage_l*kpage = mainl->kpages.pagelist;
+  //   while (kpage->next!=NULL) {
+  //     free_page(kpage->page);
+  //     kpage = kpage->next;
+  //   }
+  
+  //   free_page(kpage->page);
+  //   start = NULL;
+  // }
 }
 
 #endif // KMA_P2FL
