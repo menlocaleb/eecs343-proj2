@@ -37,7 +37,7 @@
 /************System include***********************************************/
 #include <assert.h>
 #include <stdlib.h>
-#include <math.h>
+#include <stdio.h>
 
 /************Private include**********************************************/
 #include "kma_page.h"
@@ -90,6 +90,8 @@ kma_malloc(kma_size_t size)
     initPage(page);
 
   }
+
+  printf("%d\n", NUM_BUFFER_SIZES);
   
   // calculate size, plus size of void ptr then rounded up
   int bufferSize = getAmountOfMemoryToRequest(size);
@@ -102,20 +104,27 @@ kma_malloc(kma_size_t size)
 
   // request memory of rounded up size and return
   void* buffer = getMemoryPointer(bufferSize);
+  printf("%d\n", buffer - (void*)startOfManagedMemory);
   return (void*)(((BYTE*) buffer) + sizeof(bufferData_t));
 }
 
 void 
 kma_free(void* ptr, kma_size_t size)
 {
+  void* internalPtr = (void*)((BYTE*) ptr - sizeof(bufferData_t));
+  int bufferSize = getAmountOfMemoryToRequest(size);
   // unset bitmap
+  unsetBitmap(internalPtr, bufferSize);
   // coalesce free buddies
   // insert into free list
+  insertIntoFreeList(internalPtr, bufferSize);
   // if only control struct left, release page (if not first page?)
-  if (startOfManagedMemory != NULL)
-  {
-    free_page((kma_page_t*) startOfManagedMemory->pages[0].pageData);
-  }
+  //if (startOfManagedMemory != NULL)
+  //{
+    //free_page((kma_page_t*) startOfManagedMemory->pages[0].pageData);
+    //startOfManagedMemory = NULL;
+  //}
+  printf("Freed\n");
 }
 
 
@@ -158,7 +167,7 @@ void initPage(kma_page_t* startOfNewPage)
 
 int getAmountOfMemoryToRequest(int numOfBytesRequested)
 {
-  size_t sizeWithLinkedListPtr = numOfBytesRequested + sizeof(void*);
+  size_t sizeWithLinkedListPtr = numOfBytesRequested + sizeof(bufferData_t*);
   if (sizeWithLinkedListPtr > PAGESIZE)
   {
     return -1; // request is too large
@@ -257,8 +266,6 @@ void alterBitMap(void* ptr, int sizeInBytes, bool setBits)
 
   // get base addr of page
   void* startOfPage = BASEADDR(ptr);
-  assert(startOfPage == startOfManagedMemory);
-  assert(startOfPage == startOfManagedMemory->pages[0].pageData->ptr);
   size_t pageNumber = getPageNumber(startOfPage);
   assert(pageNumber >= 0);  
 
@@ -303,12 +310,12 @@ void* getMemoryPointer(int bufferSize)
   int currentBufferSize = bufferSize;
   while (*freeBufferList == NULL && currentBufferIndex < NUM_BUFFER_SIZES)
   {
-    freeBufferList = freeBufferList + sizeof(void*);
+    freeBufferList = freeBufferList + 1;
     currentBufferIndex = currentBufferIndex + 1;
     currentBufferSize = currentBufferSize * 2;
   }
 
-  if (freeBufferIndex == NUM_BUFFER_SIZES)
+  if (currentBufferIndex == NUM_BUFFER_SIZES)
   {
     // need new page
     // add to 8196 free list
@@ -321,6 +328,7 @@ void* getMemoryPointer(int bufferSize)
 
     currentBufferIndex = currentBufferIndex - 1;
     freeBufferList = getFreeBufferPointer(currentBufferIndex); // 8192 list
+    *freeBufferList = page->ptr;
     currentBufferSize = PAGESIZE;
     // now able to continue with below logic
 
@@ -330,7 +338,7 @@ void* getMemoryPointer(int bufferSize)
   if (currentBufferIndex > freeBufferIndex)
   {
     // need to split
-    return splitUntil(freeBufferList,currentBufferSize, bufferSize);
+    return splitUntil(*freeBufferList,currentBufferSize, bufferSize);
   }
 
   // have perfect sized free list
@@ -358,7 +366,7 @@ void* splitUntil(void* freeBuffer, int bufferSize, int desiredBufferSize)
   int newBufferSize = bufferSize/2;
   // split and get two pointers
   void* smallerBufferOne = freeBuffer;
-  void* smallerBufferTwo = (BYTE*) freeBuffer + newBufferSize;
+  void* smallerBufferTwo = (void*)((BYTE*) freeBuffer + newBufferSize);
   // remove from free list
   removeFromFreeList(freeBuffer, bufferSize);
   // add later pointer to smaller free list
@@ -394,7 +402,7 @@ void removeFromFreeList(void* buffer, int bufferSize)
   if (currentBuffer != NULL)
   {
     // found buffer in free list
-    if (pastBuffer != NULL)
+    if (pastBuffer == NULL)
     {
       // first buffer in list is to be removed
       *freeBufferList = currentBuffer->nextFreeBuffer;
