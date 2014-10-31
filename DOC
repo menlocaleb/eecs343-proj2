@@ -1,0 +1,27 @@
+DOC
+In this project, we implemented Resource Map, Buddy System, Powerof2list Kernel Memory allocation algorithms.
+
+#Team members
+Xiaoyang Tan xto633
+Caleb Young csy519
+
+#Analysis:
+Resource Map:
+The implementation is simple. It can allocate exact space without waste. However, same as addressed in class, the algorithm produced a lot of holes, rendering the low utilization of the Memory. Highly fragmented map also increases the map size. Further the sorting everytime we insert free space nodes take time, making the running slow.
+
+Buddy system:
+ONe thing good about BS is coalescing free buffers every time it release buffers. It also enables the ability to exchange of memory between the allocator and paging system. Splitting also happens when a new page is allocated. However, everytime a buffer is released, the allocator tries to coalesce as much as possible. When allocate and release occur interchangeably, the algorithm does the same thing again and again(split and coalesce and the nsplit again...); on another hand, BS is that rounding up to the next highest power of 2 is likely to cause fragmentation within allocated segments. E.g. 2 67Kb request can only be satisfied with a 128kb segment. We can never guarantee that less than 50% of the allocated unit will be wasted due to internal fragmentation.
+
+Power of 2 List:
+The P2FL algorithm is relatively fast, since it avoid the lengthy linear searchs of the resource map method and walkaround the fragmentation. However, the round up of the request leaves a lot of unused space in the buffer resulting in poor memory utilization. We also have to store the header in the allocated buffers, which makes the problem worse. Illustrating the test requests, we can see that many requests are for an exat power-of-two bytes,( we can do nothing about the neccessary header storage) the wste is nearly 100%. The size of each buffer remains fixed for its lifetime. Thus while the algorithm is much faster than the resource map mathod, the round up loop is slow and inefficient.
+
+#Implementation:
+RM: 
+we maintained a double linkedlist to keep track of the free space. The implementation is straigh forward. Everytime we need  to allocate , we serach through the list to find a First-Fit, can do the allocation while inserting the rest remainder space to the list. One big decision we made is wrap all the case consideration in the add function, since all the merging and splitting node happens whenever either free or allocating happen. We also coded another function to remove the unused node during the free_alloc() process, to ensure not only does the page is neglected but also the whole list.
+
+BS:
+We did this by determining the roundup size of the request. Then do the allocation. During the allocation, we make a decision on whether to get anew page or if the current page has an availabel hole for us to use, we do an recusion splitting instead.
+Free works the same way in that recursively merging the buddies. However one important thing to notice is that each buddy have its own header, so in each recursion we determine the correct merging address adn the ndo the merge.
+
+P2FL:
+we hardcoded all the related size list and initialized them as needed. Thus we analyze the size at before we call the actuall allocate function. Once we dicide which size it was ,we only pass the coresponding list pointer to the function. And then the function do the allocation and remove the free list by one node. This hirearchial may seems complicated. But it indeed make the implementation easier. Whnen free is called , we don't have to tspecify the size of the buffer being freed. Another decision is that we don't iterate through the list to get the free node, instead, we just remove the first node and then set it's header field.
