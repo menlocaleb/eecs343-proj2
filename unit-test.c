@@ -27,6 +27,7 @@ void testInitPage();
 void testGetAmountOfMemoryToRequest();
 void testGetFreeBufferIndex();
 void testGetFreeBufferPointer();
+void testGetPageNumber();
 void testSetBitmask();
 void testUnsetBitmask();
 void testGetMemoryPointer();
@@ -36,20 +37,26 @@ void expectEqual(int expected, int actual, int testNum);
 void expectNotEqual(int expected, int actual, int testNum);
 void expectEqualPtr(void* expected, void* actual, int testNum);
 void expectNotEqualPtr(void* expected, void* actual, int testNum);
+void expectEqualByte(BYTE expected, BYTE actual, int testNum);
+void expectNotEqualByte(BYTE expected, BYTE actual, int testNum);
 
 /************External Declaration*****************************************/
 
 extern buddySystemStruct_t* startOfManagedMemory;
 
-extern void initPage(kma_page_t* startOfNewPage);
-extern int getAmountOfMemoryToRequest(int numOfBytesRequested);
-extern int getFreeBufferIndex(int bufferSize);
-extern void* getFreeBufferPointer(int index);
-extern void setBitmask(void* ptr, int sizeInBytes);
-extern void unsetBitmask(void* ptr, int sizeInBytes);
-extern void* getMemoryPointer(int bufferSize);
-extern void coalesceFreeMemory(void* pointer, int bufferSize);
-extern void* splitUntil(int bufferSize);
+void initPage(kma_page_t* startOfNewPage);
+int getAmountOfMemoryToRequest(int numOfBytesRequested);
+int getFreeBufferIndex(int bufferSize);
+void** getFreeBufferPointer(int index);
+size_t getPageNumber(void* addressOfStartOfPage); // linear search through page array
+size_t getByteIndex(void* addressOfStartOfPage, void* ptr); // index into bitmap array of bytes
+size_t getByteOffset(void* addressOfStartOfPage, void* ptr); // number of left shifts for setting/unsetting bit
+void setBitmask(void* ptr, int sizeInBytes);
+void unsetBitmask(void* ptr, int sizeInBytes);
+void alterBitMask(void* ptr, int sizeInBytes, bool setBits);
+void* getMemoryPointer(int bufferSize);
+void coalesceFreeMemory(void* pointer, int bufferSize);
+void* splitUntil(int bufferSize);
 
 /**************Implementation***********************************************/
 int
@@ -61,6 +68,8 @@ main(int argc, char* argv[])
   testGetFreeBufferIndex();
   testGetAmountOfMemoryToRequest();
   testInitPage();
+  testGetPageNumber();
+  
 
   return 0;
 }
@@ -82,23 +91,27 @@ void testInitPage()
   {
     if (i != 8)
     {
-      expectEqualPtr(NULL, getFreeBufferPointer(i), i);
+      expectEqualPtr(NULL, *getFreeBufferPointer(i), i);
     }
     else
     {
-      expectNotEqualPtr(NULL, getFreeBufferPointer(i), i);
+      expectNotEqualPtr(NULL, *getFreeBufferPointer(i), i);
     }
   }
 
   // first page should have pointer to page data, and should have first half of bits in bitmap set
   expectNotEqualPtr(NULL, startOfManagedMemory->pages[0].pageData, NUM_BUFFER_SIZES);
-
-  for (i=0; i < BITMAP_SIZE; i++) {
-    
+  int j;
+  for (j=0; j< BITMAP_SIZE; j++) {
+    if (j < BITMAP_SIZE/2)
+    {
+      expectEqualByte(255 ,startOfManagedMemory->pages[0].bitmap[j], i + j); 
+    }  
+    else
+    {
+      expectEqualByte(0, startOfManagedMemory->pages[0].bitmap[j], i+j);
+    }
   }
-
-
-
 
   free_page(page);   
   startOfManagedMemory = NULL; // reset global variable for independent tests
@@ -155,6 +168,31 @@ void testGetFreeBufferPointer()
 {
 }
 
+void testGetPageNumber()
+{
+  printf("getPageNumber Test\n");
+  kma_page_t* page;
+  kma_page_t* page2;
+  
+  // get one page
+  page = get_page();
+  page2 = get_page();
+  
+  initPage(page);
+  startOfManagedMemory->pages[1].pageData = page2;
+   
+
+  size_t pageNum = getPageNumber(page->ptr);
+  expectEqual(0, pageNum, 1);
+
+  pageNum = getPageNumber(page2->ptr);
+  expectEqual(1, pageNum, 2);
+
+  free_page(page);   
+  free_page(page2);
+  startOfManagedMemory = NULL; // reset global variable for independent tests
+}
+
 void testSetBitmask()
 {
 }
@@ -204,5 +242,21 @@ void expectNotEqualPtr(void* expected, void* actual, int testNum)
   if (expected == actual)
   {
     printf("%p == %p : test %d\n", expected, actual, testNum);
+  }
+}
+
+void expectEqualByte(BYTE expected, BYTE actual, int testNum)
+{
+  if (expected != actual)
+  {
+    printf("%hhu != %hhu : test %d\n", expected, actual, testNum);
+  }
+}
+
+void expectNotEqualByte(BYTE expected, BYTE actual, int testNum)
+{
+  if (expected == actual)
+  {
+    printf("%hhu == %hhu : test %d\n", expected, actual, testNum);
   }
 }
