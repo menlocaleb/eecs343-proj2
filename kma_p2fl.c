@@ -50,274 +50,230 @@
  *  structures and arrays, line everything up in neat columns.
  */
 
-//basic buffer struct
+//buffer struct
 typedef struct
 {
   void* head;
 } buffer_t;
 
-//struct for keeping track of requested pages
-typedef struct kpage_l_struct
+//pages list
+typedef struct page_t_struct
 {
-    kma_page_t* page; //points to kma_page_t that was returned by getPage();
-    struct kpage_l_struct* next;
-} kpage_l;    // linked list of pages
+    kma_page_t* self; // self
+    struct page_t_struct* next;
+} page_t;    // linked list of pages
 
 //struct for maintaining a list of free buffers of a certain size
 typedef struct
 {
     int size;   // buffer size
-    kpage_l *pagelist;  // points to first page that was used to hold buffers of this size
+    page_t *pagelist;  // points to first page that was used to hold buffers of this size
     int used;   // number of buffers used
     buffer_t * start; // list of free buffers of this.size size
-} freelist;
+} freelist_t;
 
 //administrative struct for keeping track of everything
 typedef struct
 {
-  freelist buf16;
-  freelist buf32;
-  freelist buf64;
-  freelist buf128;
-  freelist buf256;
-  freelist buf512;
-  freelist buf1024;
-  freelist buf2048;
-  freelist buf4096;
-  freelist buf8192;
-  freelist kpages;   // stores a list of free kpage_l buffers
+  freelist_t buf16;
+  freelist_t buf32;
+  freelist_t buf64;
+  freelist_t buf128;
+  freelist_t buf256;
+  freelist_t buf512;
+  freelist_t buf1024;
+  freelist_t buf2048;
+  freelist_t buf4096;
+  freelist_t buf8192;
+  freelist_t kpages;   // stores a list of free page_t buffers
   int used;
-} main_list;
-
-/*
-
-main_list:
-    64buf:
-        size
-        used
-        start -> null
-        pagelist -> 1
-        
-    kpages:
-        size: sizeof(kpage_l);
-        used: 0
-        start -> 2 -> 3 -> 4 ->5...
-        pagelist: not used
-
-each buffer has a header that points to either next free, or to struct freelist
-
-start page = |0main_list|1 kpage_l|2 kpage_l|3 kpage_l|4 kpage_l|5 kpage_l|6 kpage_l|7 kpage_l|
-kpage_page = |8 kpage_l|9 kpage_l|10 kpage_l|11 kpage_l|
-64 page = |HDD HDD      HDD | 
-when malloced, H points to corresponding freelist and we return pointer to DD
-when freed, we get freelist that was pointed to in H
-if no more space, special fucntion to getPage and use it ONLY for kpage_l
-
-*/
+} ls_col;
 
 /************Global Variables*********************************************/
-// starting page
-kma_page_t* start = NULL;
-// vars for tracking performance
-//uncomment the next line to record and print out stats
-// #endif
+// page entry
+kma_page_t* page_entry = NULL; 
 /************Function Prototypes******************************************/
-//set up admin data
-void
-setupMainPage(kma_page_t*);
-//adds a kpage to its associated freelist
-void
-addKpageToFreelist(kma_page_t*, freelist*);
-//returns a buffer from the freelist
-void*
-getBufferFromFreelist(freelist*);
-//add more buffers to a freelist
-void
-addBuffersTo(freelist* list);
+//set first page
+void initialize_first_p(kma_page_t*);
+//add the new got page to freelist_t
+void add_page_to_ls(kma_page_t*, freelist_t*);
+//allocate a buffer from the list
+void* get_free_buf(freelist_t*);
 /************External Declaration*****************************************/
 
 /**************Implementation***********************************************/
 
-void*
-kma_malloc(kma_size_t size)
+void* kma_malloc(kma_size_t size)
 {
-  /*
-    search from lowest to highest size freelist to find one that can
-    satisfy the request, then gets a buffer from it
-  */
-  if(start == NULL){
-    start = get_page();
-    setupMainPage(start);   
+  // if initial initialize the firs tpage/main page
+  if(page_entry == NULL){
+    page_entry = get_page();
+    initialize_first_p(page_entry);   
   }
 
-  void* result = NULL;
-  main_list* mainlist = (main_list*)start->ptr;
-  freelist* request = NULL;
+  void* free_buf = NULL;
+  ls_col* my_free_col = (ls_col*)page_entry->ptr;
+  freelist_t* target_ls = NULL;
 
   //consider the header size
-  int adjusted = size+sizeof(buffer_t);
-  if (adjusted <= 16) {
-    request = &mainlist->buf16;
-  } else if (adjusted <= 32) {
-    request = &mainlist->buf32;
-  } else if (adjusted <= 64) {
-    request = &mainlist->buf64;
-  } else if (adjusted <= 128) {
-    request = &mainlist->buf128;
-  } else if (adjusted <= 256) {
-    request = &mainlist->buf256;
-  } else if (adjusted <= 512) {
-    request = &mainlist->buf512;
-  } else if (adjusted <= 1024) {
-    request = &mainlist->buf1024;
-  } else if (adjusted <= 2048) {
-    request = &mainlist->buf2048;
-  } else if (adjusted <= 4096) {
-    request = &mainlist->buf4096;
-  } else if (adjusted <= 8192) {
-    request = &mainlist->buf8192;
+  int round_up = size+sizeof(buffer_t);
+
+  //locate the correct list
+
+  if (round_up <= 16) {
+    target_ls = &my_free_col->buf16;
+  } else if (round_up <= 32) {
+    target_ls = &my_free_col->buf32;
+  } else if (round_up <= 64) {
+    target_ls = &my_free_col->buf64;
+  } else if (round_up <= 128) {
+    target_ls = &my_free_col->buf128;
+  } else if (round_up <= 256) {
+    target_ls = &my_free_col->buf256;
+  } else if (round_up <= 512) {
+    target_ls = &my_free_col->buf512;
+  } else if (round_up <= 1024) {
+    target_ls = &my_free_col->buf1024;
+  } else if (round_up <= 2048) {
+    target_ls = &my_free_col->buf2048;
+  } else if (round_up <= 4096) {
+    target_ls = &my_free_col->buf4096;
+  } else if (round_up <= 8192) {
+    target_ls = &my_free_col->buf8192;
   }
-  if (request != NULL)
-    result = getBufferFromFreelist(request);
+  if (target_ls != NULL)
+    free_buf = get_free_buf(target_ls);
   
-  return result;
+  return free_buf;
 }
 
 
-void
-setupMainPage(kma_page_t* page)
+//initilize everything including the guiding entry
+void initialize_first_p(kma_page_t* page)
 {
-  /*
-    set up the admin data and initialize stuff. also create buffers for
-    holding the kpage_l struct
-    */
-
-  main_list* mainlist = (main_list*)page->ptr;
+  
+  ls_col* my_free_col = (ls_col*)page->ptr;
 
   // initialize all structs of main
-  mainlist->buf16 =(freelist){16,NULL,0,NULL};
-  mainlist->buf32 =(freelist){32,NULL,0,NULL};
-  mainlist->buf64 = (freelist){64,NULL,0,NULL};
-  mainlist->buf128 = (freelist){128,NULL,0,NULL};
-  mainlist->buf256 = (freelist){256,NULL,0,NULL};
-  mainlist->buf512 = (freelist){512,NULL,0,NULL};
-  mainlist->buf1024 = (freelist){1024,NULL,0,NULL};
-  mainlist->buf2048 = (freelist){2048,NULL,0,NULL};
-  mainlist->buf4096 = (freelist){4096,NULL,0,NULL};
-  mainlist->buf8192 = (freelist){8192,NULL,0,NULL};
-  mainlist->kpages = (freelist){sizeof(kpage_l)+sizeof(buffer_t), NULL, 0, NULL};
+  my_free_col->buf16 =(freelist_t){16,NULL,0,NULL};
+  my_free_col->buf32 =(freelist_t){32,NULL,0,NULL};
+  my_free_col->buf64 = (freelist_t){64,NULL,0,NULL};
+  my_free_col->buf128 = (freelist_t){128,NULL,0,NULL};
+  my_free_col->buf256 = (freelist_t){256,NULL,0,NULL};
+  my_free_col->buf512 = (freelist_t){512,NULL,0,NULL};
+  my_free_col->buf1024 = (freelist_t){1024,NULL,0,NULL};
+  my_free_col->buf2048 = (freelist_t){2048,NULL,0,NULL};
+  my_free_col->buf4096 = (freelist_t){4096,NULL,0,NULL};
+  my_free_col->buf8192 = (freelist_t){8192,NULL,0,NULL};
 
-  mainlist->used = 0;
+  my_free_col->kpages = (freelist_t){sizeof(page_t)+sizeof(buffer_t), NULL, 0, NULL};
+
+  my_free_col->used = 0;
   
-  // split remaining page into buffers of sizeof(kpage_l)+sizeof(void*) size
+  // split remaining page into buffers of sizeof(page_t)+sizeof(void*) size
 
-  int remaining_size = PAGESIZE - sizeof(main_list);
-  int buffer_count = remaining_size / (sizeof(kpage_l)+sizeof(buffer_t));
-  void* begin_point = page->ptr + sizeof(main_list);
-  buffer_t* buf_head;
+  int remaining_size = PAGESIZE - sizeof(ls_col);
+  int buffer_count = remaining_size / (sizeof(page_t)+sizeof(buffer_t));
+  void* begin_point = page->ptr + sizeof(ls_col);
+  
   int i;
   for(i = 0; i < buffer_count; i++){
-    buf_head = (buffer_t *)(begin_point + i*(sizeof(kpage_l)+sizeof(buffer_t)));
-    buf_head->head = mainlist->kpages.start;
-    mainlist->kpages.start = buf_head;
+    //set and switch the pointers
+    buffer_t* buf_head = (buffer_t *)(begin_point + i*(sizeof(page_t)+sizeof(buffer_t)));
+    buf_head->head = my_free_col->kpages.start;
+    my_free_col->kpages.start = buf_head;
   }
 
-  addKpageToFreelist(page,&mainlist->kpages);
+  add_page_to_ls(page,&my_free_col->kpages);
 }
 
 
-void
-addKpageToFreelist(kma_page_t* page, freelist* list)
+void add_page_to_ls(kma_page_t* page, freelist_t* list)
 {
-  /*
-    attaches a kpages to its associated freelist
-  */
-  main_list* mainl = (main_list*)start->ptr;
-  kpage_l* kpl = (kpage_l*)getBufferFromFreelist(&mainl->kpages);
-  kpl->page = page;
-  
-  // add kpl to list->pagelist
-  // kpl->next = list->pagelist;
-  list->pagelist = kpl;
+  ls_col* mainl = (ls_col*)page_entry->ptr;
+  page_t* to_add = (page_t*)get_free_buf(&mainl->kpages);
+  to_add->self = page;
+  to_add->next = list->pagelist;
+  list->pagelist = to_add;
 }
 
-void*
-getBufferFromFreelist(freelist* list)
+void* get_free_buf(freelist_t* list)
 {
-  /*
-    returns a free buffer from the freelist, creates more if none
-  */
-  
+  //no such size exists
   if (list->start == NULL)
     {
       kma_page_t* page = get_page();
 
-      // split page into buffers of (list->size) size
-      // Again, don't know what i'm doing
+      // divide page into buffers and initilize each buffer
       int buffer_count = PAGESIZE / list->size;
-      int i;
+      int i = 0 ;
       void* page_start = page->ptr;
       for(i = 0; i < buffer_count; i++){
         buffer_t* buf = (buffer_t*)(page_start + i*list->size);
         buf->head = list->start;
         list->start = buf;
       }
-      addKpageToFreelist(page, list);
+      add_page_to_ls(page, list);
     }
-  // // get buffer from list->start
-  // buffer_t* buf = list->start;
-  // list->start = (buffer_t*)buf->head;
-  // buf->head = (void*)list;
-  // list->used++;
-  // main_list*mainl = start->ptr;
-  // if(list!=&mainl->kpages)mainl->used++;
-  // // return pointer to rest of buffer
-  // return (void*)buf+sizeof(buffer_t);
+  // get buffer from list->start
+
+    /*
+    list->start -> |*****|____|____|...
+    */
+
+    /*do not iterate through the list, get the first one instead*/
+  buffer_t* buf = list->start;
+  list->start = (buffer_t*)buf->head;
+  buf->head = (void*)list;
+  list->used++;
+  ls_col* mainl = page_entry->ptr;
+  if(list!=&mainl->kpages)mainl->used++;
+
+
+
+  return (void*)buf+sizeof(buffer_t);
 }
 
-
-
-/***********************************************************************************
- *
- * Free - related
- *
- * ********************************************************************************/
-void
-kma_free(void* ptr, kma_size_t size)
+void kma_free(void* ptr, kma_size_t size)
 {
-  // /*
-  //   return a buffer to the freelist it belongs to
-  //   free all pages of that freelist if none of the buffers for it are used
-  // */
-  // buffer_t*buf = (buffer_t*)((void*)ptr-sizeof(buffer_t));
-  // freelist* list = (freelist*)buf->head;
-  // buf->head = list->start;
-  // list->start = buf;
-  // list->used--;
 
-  // if (list->used==0) {
-  //   list->start=NULL;
+  buffer_t*buf = (buffer_t*)((void*)ptr-sizeof(buffer_t));
 
-  //   kpage_l*kpage = list->pagelist;
-  //   while (kpage != NULL) {
-  //     free_page(kpage->page);
-  //     kpage = kpage->next;
-  //   }
-  //   list->pagelist = NULL;
-  // }
+  //translation to coresponding list
+  freelist_t* list = (freelist_t*)buf->head;
+  buf->head = list->start;
+  list->start = buf;
+  list->used--;
 
-  // main_list* mainl = (main_list*)start->ptr;
-  // mainl->used--;
-  // if (mainl->used == 0) {
-  //   kpage_l*kpage = mainl->kpages.pagelist;
-  //   while (kpage->next!=NULL) {
-  //     free_page(kpage->page);
-  //     kpage = kpage->next;
-  //   }
+//if the list is all available
+  if (list->used==0) {
+    list->start=NULL;
+
+    page_t*kpage = list->pagelist;
+    //set them free
+    while (kpage != NULL) {
+      free_page(kpage->self);
+      kpage = kpage->next;
+    }
+    list->pagelist = NULL;
+  }
+
+  ls_col* lcol = (ls_col*)page_entry->ptr;
+  lcol->used--;
+
+  //if the whole system use none
+  if (lcol->used == 0) {
+    page_t*kpage = lcol->kpages.pagelist;
+
+    //set the free!
+    while (kpage->next!=NULL) {
+      free_page(kpage->self);
+      kpage = kpage->next;
+    }
   
-  //   free_page(kpage->page);
-  //   start = NULL;
-  // }
+    free_page(kpage->self);
+    page_entry = NULL;
+  }
 }
 
 #endif // KMA_P2FL
