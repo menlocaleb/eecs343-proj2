@@ -28,8 +28,10 @@ void testGetAmountOfMemoryToRequest();
 void testGetFreeBufferIndex();
 void testGetFreeBufferPointer();
 void testGetPageNumber();
-void testSetBitmask();
-void testUnsetBitmask();
+void testGetByteIndex();
+void testGetByteOffset();
+void testSetBitmap();
+void testUnsetBitmap();
 void testGetMemoryPointer();
 void testCoalesceFreeMemory();
 void testSplitUntil();
@@ -51,12 +53,14 @@ void** getFreeBufferPointer(int index);
 size_t getPageNumber(void* addressOfStartOfPage); // linear search through page array
 size_t getByteIndex(void* addressOfStartOfPage, void* ptr); // index into bitmap array of bytes
 size_t getByteOffset(void* addressOfStartOfPage, void* ptr); // number of left shifts for setting/unsetting bit
-void setBitmask(void* ptr, int sizeInBytes);
-void unsetBitmask(void* ptr, int sizeInBytes);
-void alterBitMask(void* ptr, int sizeInBytes, bool setBits);
+void setBitmap(void* ptr, int sizeInBytes);
+void unsetBitmap(void* ptr, int sizeInBytes);
+void alterBitMap(void* ptr, int sizeInBytes, bool setBits);
 void* getMemoryPointer(int bufferSize);
 void coalesceFreeMemory(void* pointer, int bufferSize);
-void* splitUntil(int bufferSize);
+void* splitUntil(void* freeBuffer, int bufferSize, int desiredBufferSize);
+void removeFromFreeList(void* buffer, int bufferSize);
+void insertIntoFreeList(void* buffer, int bufferSize);
 
 /**************Implementation***********************************************/
 int
@@ -67,8 +71,10 @@ main(int argc, char* argv[])
 
   testGetFreeBufferIndex();
   testGetAmountOfMemoryToRequest();
-  testInitPage();
   testGetPageNumber();
+  testGetByteIndex();
+  testGetByteOffset();
+  testInitPage();
   
 
   return 0;
@@ -190,6 +196,70 @@ void testGetPageNumber()
 
   free_page(page);   
   free_page(page2);
+  startOfManagedMemory = NULL; // reset global variable for independent tests
+}
+
+void testGetByteIndex()
+{
+  printf("getByteIndex Test\n");
+  kma_page_t* page;
+  
+  // get one page
+  page = get_page();
+  
+  initPage(page);
+
+  BYTE* startOfPage = (BYTE*) page->ptr;
+
+  void* ptr = (void*) startOfPage;
+
+  size_t byteIndex = getByteIndex((void*) startOfPage, ptr);
+  expectEqual(0, byteIndex, 1);
+
+  ptr = (void*) (startOfPage + PAGESIZE/2);
+
+  byteIndex = getByteIndex((void*) startOfPage, ptr);
+  expectEqual(BITMAP_SIZE/2, byteIndex, 2);
+  
+  ptr = (void*) startOfPage + 3*PAGESIZE/4;
+
+  byteIndex = getByteIndex((void*) startOfPage, ptr);
+  expectEqual(3*BITMAP_SIZE/4, byteIndex, 3);
+
+  free_page(page);   
+  startOfManagedMemory = NULL; // reset global variable for independent tests
+}
+
+void testGetByteOffset()
+{
+  printf("getByteOffset Test\n");
+  kma_page_t* page;
+  
+  // get one page
+  page = get_page();
+  
+  initPage(page);
+
+  BYTE* startOfPage = (BYTE*) page->ptr;
+
+  void* ptr = (void*) startOfPage;
+
+  // offset is number of bits added after byte index (start at left edge of bits in byte)
+  size_t byteOffset = getByteOffset((void*) startOfPage, ptr);
+  expectEqual(0, byteOffset, 1);
+
+  ptr = (void*) startOfPage + PAGESIZE/2 + MIN_BUFFER_SIZE;
+
+  // offset is number of bits added after byte index (start at left edge of bits in byte)
+  byteOffset = getByteOffset((void*) startOfPage, ptr);
+  expectEqual(1, byteOffset, 2);
+  
+  ptr = (void*) startOfPage + 3*PAGESIZE/4 + 2*MIN_BUFFER_SIZE;
+
+  byteOffset = getByteOffset((void*) startOfPage, ptr);
+  expectEqual(2, byteOffset, 3);
+
+  free_page(page);   
   startOfManagedMemory = NULL; // reset global variable for independent tests
 }
 

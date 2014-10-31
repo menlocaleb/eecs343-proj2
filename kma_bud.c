@@ -37,6 +37,7 @@
 /************System include***********************************************/
 #include <assert.h>
 #include <stdlib.h>
+#include <math.h>
 
 /************Private include**********************************************/
 #include "kma_page.h"
@@ -63,12 +64,14 @@ void** getFreeBufferPointer(int index);
 size_t getPageNumber(void* addressOfStartOfPage); // linear search through page array
 size_t getByteIndex(void* addressOfStartOfPage, void* ptr); // index into bitmap array of bytes
 size_t getByteOffset(void* addressOfStartOfPage, void* ptr); // number of left shifts for setting/unsetting bit
-void setBitmask(void* ptr, int sizeInBytes);
-void unsetBitmask(void* ptr, int sizeInBytes);
-void alterBitMask(void* ptr, int sizeInBytes, bool setBits);
+void setBitmap(void* ptr, int sizeInBytes);
+void unsetBitmap(void* ptr, int sizeInBytes);
+void alterBitMap(void* ptr, int sizeInBytes, bool setBits);
 void* getMemoryPointer(int bufferSize);
 void coalesceFreeMemory(void* pointer, int bufferSize);
-void* splitUntil(int bufferSize);
+void* splitUntil(void* freeBuffer, int bufferSize, int desiredBufferSize);
+void removeFromFreeList(void* buffer, int bufferSize);
+void insertIntoFreeList(void* buffer, int bufferSize);
 	
 /************External Declaration*****************************************/
 
@@ -89,11 +92,17 @@ kma_malloc(kma_size_t size)
   }
   
   // calculate size, plus size of void ptr then rounded up
+  int bufferSize = getAmountOfMemoryToRequest(size);
 
   // return null if bigger than a page
+  if (bufferSize == -1)
+  {
+    return NULL;
+  }
 
   // request memory of rounded up size and return
-  return NULL;
+  void* buffer = getMemoryPointer(bufferSize);
+  return (void*)(((BYTE*) buffer) + sizeof(bufferData_t));
 }
 
 void 
@@ -103,7 +112,10 @@ kma_free(void* ptr, kma_size_t size)
   // coalesce free buddies
   // insert into free list
   // if only control struct left, release page (if not first page?)
-  ;
+  if (startOfManagedMemory != NULL)
+  {
+    free_page((kma_page_t*) startOfManagedMemory->pages[0].pageData);
+  }
 }
 
 
@@ -131,7 +143,7 @@ void initPage(kma_page_t* startOfNewPage)
     startOfManagedMemory->pages[0].pageData = startOfNewPage;
 
     // need to update bitmap
-    setBitmask((void*) startOfManagedMemory, PAGESIZE/2);
+    setBitmap((void*) startOfManagedMemory, PAGESIZE/2);
 
     // now need to split block into buffers because used half
     int bufferListIndex = getFreeBufferIndex(PAGESIZE/2);
@@ -209,27 +221,29 @@ size_t getPageNumber(void* addressOfStartOfPage)
 
 size_t getByteIndex(void* addressOfStartOfPage, void* ptr)
 {
-  return 0;
+  int differenceInBytes = ((BYTE*)ptr) - ((BYTE*)addressOfStartOfPage);
+  size_t indexToBit = differenceInBytes/MIN_BUFFER_SIZE;
+  return indexToBit/8; // divide by 8 to get bytes
 }
 
 size_t getByteOffset(void* addressOfStartOfPage, void* ptr)
 {
-  return 0;
+  int differenceInBytes = ((BYTE*)ptr) - ((BYTE*)addressOfStartOfPage);
+  size_t indexToBit = differenceInBytes/MIN_BUFFER_SIZE;
+  return indexToBit % 8; // mod by 8 to get bit offset
 }
 
-void setBitmask(void* ptr, int sizeInBytes)
+void setBitmap(void* ptr, int sizeInBytes)
 {
-  // calculate proportion of memory to overwrite and offset
-
-  // given number of bits and offset overwrite bits
-  // figure out how many fully bytes can overwrite, then move into individual bits
+  alterBitMap(ptr, sizeInBytes, TRUE);
 }
 
-void unsetBitmask(void* ptr, int sizeInBytes)
+void unsetBitmap(void* ptr, int sizeInBytes)
 {
+  alterBitMap(ptr, sizeInBytes, FALSE);
 }
 
-void alterBitMask(void* ptr, int sizeInBytes, bool setBits)
+void alterBitMap(void* ptr, int sizeInBytes, bool setBits)
 {
   BYTE byteValue;
   if (setBits)
@@ -243,10 +257,12 @@ void alterBitMask(void* ptr, int sizeInBytes, bool setBits)
 
   // get base addr of page
   void* startOfPage = BASEADDR(ptr);
+  assert(startOfPage == startOfManagedMemory);
+  assert(startOfPage == startOfManagedMemory->pages[0].pageData->ptr);
   size_t pageNumber = getPageNumber(startOfPage);
-  assert(pageNumber > 0);  
+  assert(pageNumber >= 0);  
 
-  int numBitsInBitmap = sizeInBytes/MIN_BUFFER_SIZE * 8; 
+  int numBitsInBitmap = sizeInBytes/MIN_BUFFER_SIZE; 
   size_t bitmapIndex = getByteIndex(startOfPage, ptr);
   size_t bitmapOffset = getByteOffset(startOfPage, ptr);
 
@@ -280,16 +296,174 @@ void alterBitMask(void* ptr, int sizeInBytes, bool setBits)
 
 void* getMemoryPointer(int bufferSize)
 {
-  return NULL;
+  // check that free list, if space, set bits, change freeList, and return pointer
+  int freeBufferIndex = getFreeBufferIndex(bufferSize);
+  void** freeBufferList = getFreeBufferPointer(freeBufferIndex);
+  int currentBufferIndex = freeBufferIndex;
+  int currentBufferSize = bufferSize;
+  while (*freeBufferList == NULL && currentBufferIndex < NUM_BUFFER_SIZES)
+  {
+    freeBufferList = freeBufferList + sizeof(void*);
+    currentBufferIndex = currentBufferIndex + 1;
+    currentBufferSize = currentBufferSize * 2;
+  }
+
+  if (freeBufferIndex == NUM_BUFFER_SIZES)
+  {
+    // need new page
+    // add to 8196 free list
+    // set freeListPointer to this list
+    kma_page_t* page;
+    page = get_page();
+    bufferData_t* buffer = (bufferData_t*)page->ptr;
+    buffer->nextFreeBuffer = NULL;
+    buffer->bufferSize = PAGESIZE;
+
+    currentBufferIndex = currentBufferIndex - 1;
+    freeBufferList = getFreeBufferPointer(currentBufferIndex); // 8192 list
+    currentBufferSize = PAGESIZE;
+    // now able to continue with below logic
+
+  }
+
+  // have pointer to free list  
+  if (currentBufferIndex > freeBufferIndex)
+  {
+    // need to split
+    return splitUntil(freeBufferList,currentBufferSize, bufferSize);
+  }
+
+  // have perfect sized free list
+  void* freeBuffer = *freeBufferList;
+
+  // set bitmap
+  setBitmap(freeBuffer, bufferSize);
+
+  // take buffer out of free list
+  *freeBufferList = ((bufferData_t*)freeBuffer)->nextFreeBuffer;
+
+  // record buffer size
+  ((bufferData_t*)freeBuffer)->bufferSize = bufferSize;
+  
+
+  return freeBuffer;
 }
 
 void coalesceFreeMemory(void* pointer, int bufferSize)
 {
 }
 
-void* splitUntil(int bufferSize)
+void* splitUntil(void* freeBuffer, int bufferSize, int desiredBufferSize)
 {
-  return NULL;
+  int newBufferSize = bufferSize/2;
+  // split and get two pointers
+  void* smallerBufferOne = freeBuffer;
+  void* smallerBufferTwo = (BYTE*) freeBuffer + newBufferSize;
+  // remove from free list
+  removeFromFreeList(freeBuffer, bufferSize);
+  // add later pointer to smaller free list
+  insertIntoFreeList(smallerBufferTwo, newBufferSize);
+  
+  // either return or recursively call function
+  if (newBufferSize == desiredBufferSize)
+  {
+    bufferData_t* bufferData = (bufferData_t*)smallerBufferOne;
+    bufferData->nextFreeBuffer = NULL;
+    bufferData->bufferSize = desiredBufferSize;
+    
+    return smallerBufferOne;
+  }
+  else
+  {
+    return splitUntil(smallerBufferOne, newBufferSize, desiredBufferSize);
+  }
 }
+
+void removeFromFreeList(void* buffer, int bufferSize)
+{
+  int freeBufferIndex = getFreeBufferIndex(bufferSize);
+  void** freeBufferList = getFreeBufferPointer(freeBufferIndex);
+  bufferData_t* currentBuffer = (bufferData_t*)*freeBufferList;
+  bufferData_t* pastBuffer = NULL;
+  while (currentBuffer != NULL && currentBuffer != buffer)
+  {
+    pastBuffer = currentBuffer;
+    currentBuffer = currentBuffer->nextFreeBuffer;
+  }
+
+  if (currentBuffer != NULL)
+  {
+    // found buffer in free list
+    if (pastBuffer != NULL)
+    {
+      // first buffer in list is to be removed
+      *freeBufferList = currentBuffer->nextFreeBuffer;
+    }
+    else
+    {
+      // pastBuffer now needs to skip input buffer
+      pastBuffer->nextFreeBuffer = currentBuffer->nextFreeBuffer;
+    }
+  }
+}
+
+// need to insert into list on same page as buffer
+void insertIntoFreeList(void* buffer, int bufferSize)
+{
+  int freeBufferIndex = getFreeBufferIndex(bufferSize);
+  void** freeBufferList = getFreeBufferPointer(freeBufferIndex);
+  bufferData_t* currentBuffer = (bufferData_t*)*freeBufferList;
+  bufferData_t* pastBuffer = NULL;
+
+  // handle case where list is empty
+  if (currentBuffer == NULL)
+  {
+    *freeBufferList = buffer;
+    currentBuffer = (bufferData_t*)*freeBufferList;
+    currentBuffer->nextFreeBuffer = NULL;
+    currentBuffer->bufferSize = bufferSize;
+    return;
+  }
+
+  // now handle case where there are elements in free list
+  size_t inputBufferPage = getPageNumber(BASEADDR(buffer));
+  size_t currentPageNum = getPageNumber(BASEADDR(currentBuffer));
+
+  while (currentBuffer->nextFreeBuffer != NULL && currentPageNum < inputBufferPage && ((void*) currentBuffer) < buffer)
+  {
+    pastBuffer = currentBuffer;
+    currentBuffer = currentBuffer->nextFreeBuffer;
+    currentPageNum = getPageNumber(BASEADDR(currentBuffer));
+  }
+ 
+  if (currentBuffer->nextFreeBuffer == NULL)
+  {
+    // reached end of list, insert at end
+    currentBuffer->nextFreeBuffer = buffer;
+    currentBuffer = (bufferData_t*)buffer;
+    currentBuffer->nextFreeBuffer = NULL;
+    currentBuffer->bufferSize = bufferSize;
+  }
+  else
+  {
+    // in middle of list but past where we want to input buffer
+    if (pastBuffer == NULL)
+    {
+      // we want to insert buffer at start of free list
+      *freeBufferList = buffer;
+      ((bufferData_t*)buffer)->nextFreeBuffer = (void*)currentBuffer;
+      ((bufferData_t*)buffer)->bufferSize = bufferSize;
+    }
+    else
+    {
+      // we want to insert list between pastBuffer and currentBuffer
+      pastBuffer->nextFreeBuffer = buffer;
+      ((bufferData_t*)buffer)->nextFreeBuffer = (void*)currentBuffer;
+      ((bufferData_t*)buffer)->bufferSize = bufferSize;
+    }
+
+  }
+}
+
 
 #endif // KMA_BUD

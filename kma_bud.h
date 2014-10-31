@@ -15,7 +15,7 @@
 #define MIN_POWER 4
 #define MAX_POWER 13 // assumes pagesize is 8192
 #define MIN_BUFFER_SIZE 16
-#define NUM_BUFFER_SIZES 4 * (MAX_POWER - MIN_POWER + 1)
+#define NUM_BUFFER_SIZES (MAX_POWER - MIN_POWER + 1)
 #define BITMAP_SIZE PAGESIZE/(MIN_BUFFER_SIZE * 8) // in bytes
 #define MAX_BUDDY_SYSTEM_PAGES 20 // arbitrary now
 
