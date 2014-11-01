@@ -51,6 +51,7 @@ int getAmountOfMemoryToRequest(int numOfBytesRequested);
 int getFreeBufferIndex(int bufferSize);
 void** getFreeBufferPointer(int index);
 size_t getPageNumber(void* addressOfStartOfPage); // linear search through page array
+size_t getNextPageNumber(); // linear search for first one with null pageData
 size_t getByteIndex(void* addressOfStartOfPage, void* ptr); // index into bitmap array of bytes
 size_t getByteOffset(void* addressOfStartOfPage, void* ptr); // number of left shifts for setting/unsetting bit
 void setBitmap(void* ptr, int sizeInBytes);

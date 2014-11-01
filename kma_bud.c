@@ -62,6 +62,7 @@ int getAmountOfMemoryToRequest(int numOfBytesRequested);
 int getFreeBufferIndex(int bufferSize);
 void** getFreeBufferPointer(int index);
 size_t getPageNumber(void* addressOfStartOfPage); // linear search through page array
+size_t getNextPageNumber(); // linear search for first one with null pageData
 size_t getByteIndex(void* addressOfStartOfPage, void* ptr); // index into bitmap array of bytes
 size_t getByteOffset(void* addressOfStartOfPage, void* ptr); // number of left shifts for setting/unsetting bit
 void setBitmap(void* ptr, int sizeInBytes);
@@ -91,7 +92,6 @@ kma_malloc(kma_size_t size)
 
   }
 
-  printf("%d\n", NUM_BUFFER_SIZES);
   
   // calculate size, plus size of void ptr then rounded up
   int bufferSize = getAmountOfMemoryToRequest(size);
@@ -104,14 +104,16 @@ kma_malloc(kma_size_t size)
 
   // request memory of rounded up size and return
   void* buffer = getMemoryPointer(bufferSize);
-  printf("%d\n", buffer - (void*)startOfManagedMemory);
+  //printf("%d\n", buffer - (void*)startOfManagedMemory);
   return (void*)(((BYTE*) buffer) + sizeof(bufferData_t));
 }
 
 void 
 kma_free(void* ptr, kma_size_t size)
 {
-  void* internalPtr = (void*)((BYTE*) ptr - sizeof(bufferData_t));
+  printf("%p", ptr);
+  void* internalPtr = (void*)(((BYTE*) ptr) - sizeof(bufferData_t));
+  printf("%p\n", internalPtr);
   int bufferSize = getAmountOfMemoryToRequest(size);
   // unset bitmap
   unsetBitmap(internalPtr, bufferSize);
@@ -228,6 +230,19 @@ size_t getPageNumber(void* addressOfStartOfPage)
   return i;
 }
 
+size_t getNextPageNumber()
+{
+  int i;
+  for (i=0; i < MAX_BUDDY_SYSTEM_PAGES; i++)
+  {
+    if (startOfManagedMemory->pages[i].pageData == NULL)
+    {
+      return i;
+    }
+  }
+  return -1;
+}
+
 size_t getByteIndex(void* addressOfStartOfPage, void* ptr)
 {
   int differenceInBytes = ((BYTE*)ptr) - ((BYTE*)addressOfStartOfPage);
@@ -322,6 +337,9 @@ void* getMemoryPointer(int bufferSize)
     // set freeListPointer to this list
     kma_page_t* page;
     page = get_page();
+    size_t nextPage = getNextPageNumber();
+    assert(nextPage > 0);
+    startOfManagedMemory->pages[nextPage].pageData = page;
     bufferData_t* buffer = (bufferData_t*)page->ptr;
     buffer->nextFreeBuffer = NULL;
     buffer->bufferSize = PAGESIZE;
@@ -428,6 +446,7 @@ void insertIntoFreeList(void* buffer, int bufferSize)
   {
     *freeBufferList = buffer;
     currentBuffer = (bufferData_t*)*freeBufferList;
+    assert(currentBuffer != NULL);
     currentBuffer->nextFreeBuffer = NULL;
     currentBuffer->bufferSize = bufferSize;
     return;
@@ -436,11 +455,13 @@ void insertIntoFreeList(void* buffer, int bufferSize)
   // now handle case where there are elements in free list
   size_t inputBufferPage = getPageNumber(BASEADDR(buffer));
   size_t currentPageNum = getPageNumber(BASEADDR(currentBuffer));
-
+  assert(currentBuffer != NULL);
   while (currentBuffer->nextFreeBuffer != NULL && currentPageNum < inputBufferPage && ((void*) currentBuffer) < buffer)
   {
+    printf("%p/n", currentBuffer);
     pastBuffer = currentBuffer;
     currentBuffer = currentBuffer->nextFreeBuffer;
+    assert(currentBuffer != NULL);
     currentPageNum = getPageNumber(BASEADDR(currentBuffer));
   }
  
@@ -465,6 +486,7 @@ void insertIntoFreeList(void* buffer, int bufferSize)
     else
     {
       // we want to insert list between pastBuffer and currentBuffer
+      assert(pastBuffer != NULL);
       pastBuffer->nextFreeBuffer = buffer;
       ((bufferData_t*)buffer)->nextFreeBuffer = (void*)currentBuffer;
       ((bufferData_t*)buffer)->bufferSize = bufferSize;
