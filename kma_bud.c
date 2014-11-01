@@ -85,7 +85,6 @@ bool onlyControlStructureLeft();
 void*
 kma_malloc(kma_size_t size)
 {
-  printf("%d\n", size);
   if (startOfManagedMemory == NULL)
   {
     // get new page and initialize control struct
@@ -93,13 +92,14 @@ kma_malloc(kma_size_t size)
   
     // get one page
     page = get_page();
+    printf("start of page in memory %p\n", page->ptr);
     initPage(page);
 
   }
-
   
   // calculate size, plus size of void ptr then rounded up
   int bufferSize = getAmountOfMemoryToRequest(size);
+  printf("Size:%d Buffer:%d\n", size, bufferSize);
 
   // return null if bigger than a page
   if (bufferSize == -1)
@@ -109,7 +109,8 @@ kma_malloc(kma_size_t size)
 
   // request memory of rounded up size and return
   void* buffer = getMemoryPointer(bufferSize);
-  //printf("%d\n", buffer - (void*)startOfManagedMemory);
+  printf("Distance from start of page %d\n", buffer - (void*)startOfManagedMemory);
+  printf("buffer, returned pointer %p, %p\n", buffer, (void*)(((BYTE*) buffer) + sizeof(bufferData_t)));
   return (void*)(((BYTE*) buffer) + sizeof(bufferData_t));
 }
 
@@ -398,6 +399,7 @@ void alterBitMap(void* ptr, int sizeInBytes, bool setBits)
     if (setBits)
     {
       *bitmapLoc |= 1 << (7-i);
+      printf("bitmap altered  %hhu\n", *bitmapLoc);
     }
     else
     {
@@ -507,6 +509,7 @@ void* splitUntil(void* freeBuffer, int bufferSize, int desiredBufferSize)
   // either return or recursively call function
   if (newBufferSize == desiredBufferSize)
   {
+    setBitmap(smallerBufferOne, desiredBufferSize);
     bufferData_t* bufferData = (bufferData_t*)smallerBufferOne;
     bufferData->nextFreeBuffer = NULL;
     bufferData->bufferSize = desiredBufferSize;
@@ -570,9 +573,8 @@ void insertIntoFreeList(void* buffer, int bufferSize)
   size_t inputBufferPage = getPageNumber(BASEADDR(buffer));
   size_t currentPageNum = getPageNumber(BASEADDR(currentBuffer));
   assert(currentBuffer != NULL);
-  while (currentBuffer->nextFreeBuffer != NULL && currentPageNum < inputBufferPage && ((void*) currentBuffer) < buffer)
+  while (currentBuffer->nextFreeBuffer != NULL && currentPageNum < inputBufferPage)
   {
-    printf("%p/n", currentBuffer);
     pastBuffer = currentBuffer;
     currentBuffer = currentBuffer->nextFreeBuffer;
     assert(currentBuffer != NULL);
