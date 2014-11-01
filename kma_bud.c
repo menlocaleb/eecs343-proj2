@@ -85,6 +85,7 @@ bool onlyControlStructureLeft();
 void*
 kma_malloc(kma_size_t size)
 {
+  printf("%d\n", size);
   if (startOfManagedMemory == NULL)
   {
     // get new page and initialize control struct
@@ -201,7 +202,7 @@ void initPage(kma_page_t* startOfNewPage)
 
 int getAmountOfMemoryToRequest(int numOfBytesRequested)
 {
-  size_t sizeWithLinkedListPtr = numOfBytesRequested + sizeof(bufferData_t*);
+  size_t sizeWithLinkedListPtr = numOfBytesRequested + sizeof(bufferData_t);
   if (sizeWithLinkedListPtr > PAGESIZE)
   {
     return -1; // request is too large
