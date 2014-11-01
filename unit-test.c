@@ -54,11 +54,13 @@ size_t getPageNumber(void* addressOfStartOfPage); // linear search through page 
 size_t getNextPageNumber(); // linear search for first one with null pageData
 size_t getByteIndex(void* addressOfStartOfPage, void* ptr); // index into bitmap array of bytes
 size_t getByteOffset(void* addressOfStartOfPage, void* ptr); // number of left shifts for setting/unsetting bit
+void* getBuddyPointer(void* startOfPage, void* ptr);
+bool checkIfBitmapSet(void* ptr, int sizeInBytes);
 void setBitmap(void* ptr, int sizeInBytes);
 void unsetBitmap(void* ptr, int sizeInBytes);
 void alterBitMap(void* ptr, int sizeInBytes, bool setBits);
 void* getMemoryPointer(int bufferSize);
-void coalesceFreeMemory(void* pointer, int bufferSize);
+void coalesceFreeMemory(void** pointer, int& bufferSize);
 void* splitUntil(void* freeBuffer, int bufferSize, int desiredBufferSize);
 void removeFromFreeList(void* buffer, int bufferSize);
 void insertIntoFreeList(void* buffer, int bufferSize);

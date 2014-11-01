@@ -38,6 +38,7 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 
 /************Private include**********************************************/
 #include "kma_page.h"
@@ -65,14 +66,17 @@ size_t getPageNumber(void* addressOfStartOfPage); // linear search through page 
 size_t getNextPageNumber(); // linear search for first one with null pageData
 size_t getByteIndex(void* addressOfStartOfPage, void* ptr); // index into bitmap array of bytes
 size_t getByteOffset(void* addressOfStartOfPage, void* ptr); // number of left shifts for setting/unsetting bit
+void* getBuddyPointer(void* startOfPage, void* ptr, int bufferSize);
+bool checkIfBitmapSet(void* ptr, int sizeInBytes);
 void setBitmap(void* ptr, int sizeInBytes);
 void unsetBitmap(void* ptr, int sizeInBytes);
 void alterBitMap(void* ptr, int sizeInBytes, bool setBits);
 void* getMemoryPointer(int bufferSize);
-void coalesceFreeMemory(void* pointer, int bufferSize);
+void coalesceFreeMemory(void** pointer, int* bufferSize);
 void* splitUntil(void* freeBuffer, int bufferSize, int desiredBufferSize);
 void removeFromFreeList(void* buffer, int bufferSize);
 void insertIntoFreeList(void* buffer, int bufferSize);
+bool onlyControlStructureLeft();
 	
 /************External Declaration*****************************************/
 
@@ -111,22 +115,50 @@ kma_malloc(kma_size_t size)
 void 
 kma_free(void* ptr, kma_size_t size)
 {
-  printf("%p", ptr);
   void* internalPtr = (void*)(((BYTE*) ptr) - sizeof(bufferData_t));
-  printf("%p\n", internalPtr);
   int bufferSize = getAmountOfMemoryToRequest(size);
+  size_t pageNum = getPageNumber(BASEADDR(internalPtr));
   // unset bitmap
   unsetBitmap(internalPtr, bufferSize);
   // coalesce free buddies
-  // insert into free list
-  insertIntoFreeList(internalPtr, bufferSize);
-  // if only control struct left, release page (if not first page?)
-  //if (startOfManagedMemory != NULL)
-  //{
-    //free_page((kma_page_t*) startOfManagedMemory->pages[0].pageData);
-    //startOfManagedMemory = NULL;
-  //}
-  printf("Freed\n");
+  coalesceFreeMemory(&internalPtr, &bufferSize);
+  if (bufferSize == PAGESIZE)
+  {
+    // can free page
+    free_page(startOfManagedMemory->pages[pageNum].pageData);
+    // right way would be to shift all pages after this over
+
+    int pageIndex = pageNum + 1;
+    while (startOfManagedMemory->pages[pageIndex].pageData != NULL)
+    {
+      memcpy((void*)&startOfManagedMemory->pages[pageIndex-1], (void*)&startOfManagedMemory->pages[pageIndex], sizeof(pageControlStruct_t*)); 
+      pageIndex = pageIndex + 1;
+    }
+
+    // so that the last page in list isn't duplicated
+    startOfManagedMemory->pages[pageIndex-1].pageData = NULL;
+
+    int j;
+    for (j=0; j < BITMAP_SIZE; j++)
+    {
+      startOfManagedMemory->pages[pageIndex-1].bitmap[j] = 0;
+    }
+  }
+
+  if (onlyControlStructureLeft())
+  {
+    // everything gone except control structure
+    // free page
+    free_page(startOfManagedMemory->pages[0].pageData);
+    startOfManagedMemory = NULL;
+    return;
+  }
+  
+  if (bufferSize != PAGESIZE)
+  {
+    // insert into free list
+    insertIntoFreeList(internalPtr, bufferSize);
+  }
 }
 
 
@@ -257,6 +289,63 @@ size_t getByteOffset(void* addressOfStartOfPage, void* ptr)
   return indexToBit % 8; // mod by 8 to get bit offset
 }
 
+void* getBuddyPointer(void* startOfPage, void* ptr, int bufferSize)
+{
+  int differenceInBytes = ((BYTE*)ptr) - ((BYTE*)startOfPage);
+  assert(differenceInBytes % bufferSize == 0);
+  bool isLeftBuddy = (differenceInBytes/bufferSize) % 2 == 0;
+
+  if (isLeftBuddy)
+  {
+    return (void*)((BYTE*)ptr + bufferSize);
+  }
+  else
+  {
+    return (void*)((BYTE*)ptr - bufferSize);
+  }
+}
+
+bool checkIfBitmapSet(void* ptr, int sizeInBytes)
+{
+  void* startOfPage = BASEADDR(ptr);
+  size_t pageNumber = getPageNumber(startOfPage);
+  assert(pageNumber >= 0);  
+
+  int numBitsInBitmap = sizeInBytes/MIN_BUFFER_SIZE; 
+  size_t bitmapIndex = getByteIndex(startOfPage, ptr);
+  size_t bitmapOffset = getByteOffset(startOfPage, ptr);
+
+  BYTE* bitmapLoc = &startOfManagedMemory->pages[pageNumber].bitmap[bitmapIndex];
+
+  int i;
+  if (bitmapOffset == 0)
+  {
+    // if offset is 0 then possible that we can set bytes at a time
+    for (i=0; i < numBitsInBitmap/8; i++)
+    {
+      if (*bitmapLoc != 0)
+      {
+        return TRUE;
+      }
+      bitmapLoc = bitmapLoc + 1;
+    }
+  }
+  // if there is a offset within a byte, then we know numBitsInBitmap < 8 because buffer has offset multiples of size 
+  assert(bitmapOffset < 8);
+
+  for (i=bitmapOffset; i < numBitsInBitmap % 8; i++)
+  {
+      if ((*bitmapLoc & 1 << (7-i)) != 0)
+      {
+        return TRUE;
+      }
+  }
+
+
+  // bitmap all 0s, can coalesce!
+  return FALSE;
+}
+
 void setBitmap(void* ptr, int sizeInBytes)
 {
   alterBitMap(ptr, sizeInBytes, TRUE);
@@ -375,8 +464,32 @@ void* getMemoryPointer(int bufferSize)
   return freeBuffer;
 }
 
-void coalesceFreeMemory(void* pointer, int bufferSize)
+// call after unset bitmap for this buffer
+void coalesceFreeMemory(void** pointer, int* bufferSize)
 {
+  // calculate buddy location
+  void* startOfPage = BASEADDR(*pointer);
+  // check if buddy is free
+  void* buddyPtr = getBuddyPointer(startOfPage, *pointer, *bufferSize);
+  if (!checkIfBitmapSet(buddyPtr,*bufferSize))
+  {
+    // can coalesce!
+    // need to remove it from freeList
+    // handle inserting back in in kma_free
+    removeFromFreeList(buddyPtr,*bufferSize);
+    *bufferSize = *bufferSize*2;
+    if (buddyPtr < *pointer)
+    {
+      *pointer = buddyPtr;
+    }
+
+    if (*bufferSize != PAGESIZE)
+    {
+      coalesceFreeMemory(pointer, bufferSize);
+    }
+  }
+  // base case is either buddy isn't free of full page free
+  
 }
 
 void* splitUntil(void* freeBuffer, int bufferSize, int desiredBufferSize)
@@ -495,5 +608,31 @@ void insertIntoFreeList(void* buffer, int bufferSize)
   }
 }
 
+bool onlyControlStructureLeft()
+{
+  // only ControlStructure left is all but first half of first page is free
+  int i;
+  int j;
+  // handle first page separately
+  for (j=BITMAP_SIZE/2; j < BITMAP_SIZE; j++)
+  {
+    if (startOfManagedMemory->pages[0].bitmap[j] != 0)
+    {
+      return FALSE;
+    }
+  }
+
+  for (i=1; i < MAX_BUDDY_SYSTEM_PAGES; i++)
+  {
+    for (j=0; j < BITMAP_SIZE; j++)
+    {
+      if (startOfManagedMemory->pages[i].bitmap[j] != 0)
+      {
+        return FALSE;
+      }
+    }
+  } 
+  return TRUE;
+}
 
 #endif // KMA_BUD
